@@ -1,7 +1,6 @@
-
-namespace SurveyManagement.Domain.Entities
+﻿namespace SurveyManagement.Application.DTOs.UserProfileDTOs
 {
-    public class UserProfile
+    public class UserProfileDto
     {
         public Guid UserProfileId { get; set; }
         public Guid UserId { get; set; }
@@ -9,7 +8,5 @@ namespace SurveyManagement.Domain.Entities
         public string LastName { get; set; } = string.Empty;
         public string? Phone { get; set; }
         public string? Address { get; set; }
-
-        public User? User { get; set; }
     }
 }
