@@ -1,0 +1,15 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\SurveyManagement.CrossCutting\SurveyManagement.CrossCutting.csproj" />
+    <ProjectReference Include="..\SurveyManagement.Domain\SurveyManagement.Domain.csproj" />
+    <ProjectReference Include="..\SurveyManagement.Infrastructure\SurveyManagement.Infrastructure.csproj" />
+  </ItemGroup>
+
+</Project>
