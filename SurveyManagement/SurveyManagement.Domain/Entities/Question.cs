@@ -16,6 +16,7 @@ namespace SurveyManagement.Domain.Entities
         public QuestionType QuestionType { get; set; }
         public int Order { get; set; }
 
+        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;  // <--- add this
         public Survey? Survey { get; set; }
         public ICollection<Option> Options { get; set; } = new List<Option>();
         public ICollection<Response> Responses { get; set; } = new List<Response>();

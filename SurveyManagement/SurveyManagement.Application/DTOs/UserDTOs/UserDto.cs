@@ -9,5 +9,8 @@ namespace SurveyManagement.Application.DTOs.UserDTOs
         public string LastName { get; set; } = string.Empty;
         public string? Phone { get; set; }
         public string? Address { get; set; }
+
+        // Add Role property
+        public string Role { get; set; } = "Respondent";
     }
 }

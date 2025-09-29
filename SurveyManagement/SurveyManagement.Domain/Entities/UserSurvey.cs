@@ -5,6 +5,7 @@ namespace SurveyManagement.Domain.Entities
         public Guid UserSurveyId { get; set; }
         public Guid UserId { get; set; }
         public Guid SurveyId { get; set; }
+        public Guid CreatedById { get; set; } // Added to track which admin created it
         public DateTime StartedAt { get; set; }
         public DateTime? CompletedAt { get; set; }
 

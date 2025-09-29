@@ -1,8 +1,10 @@
-using SurveyManagement.Application.DTOs.UserDTOs;
+using AutoMapper;
+using BCrypt.Net;
 using SurveyManagement.Application.DTOs;
+using SurveyManagement.Application.DTOs.UserDTOs;
 using SurveyManagement.Domain.Entities;
 using SurveyManagement.Domain.Interfaces;
-using AutoMapper;
+using SurveyManagement.Infrastructure.Repositories;
 
 namespace SurveyManagement.Application.Services
 {
@@ -11,11 +13,15 @@ namespace SurveyManagement.Application.Services
         private readonly IUserRepository _userRepository;
         private readonly IMapper _mapper;
 
-        public UserService(IUserRepository userRepository, IMapper mapper)
+        private readonly IPasswordHistoryRepository _passwordHistoryRepository;
+
+        public UserService(IUserRepository userRepository, IMapper mapper, IPasswordHistoryRepository passwordHistoryRepository)
         {
             _userRepository = userRepository;
             _mapper = mapper;
+            _passwordHistoryRepository = passwordHistoryRepository;
         }
+
 
         public async Task<IEnumerable<UserDto>> GetAllUsersAsync()
         {
@@ -33,9 +39,29 @@ namespace SurveyManagement.Application.Services
         public async Task<UserDto> CreateUserAsync(CreateUserDto createUserDto)
         {
             var user = _mapper.Map<User>(createUserDto);
+
+            // Assign role dynamically
+            if (!Enum.TryParse<UserRole>(createUserDto.Role, true, out var role))
+                role = UserRole.Respondent; // fallback default
+
+            user.Role = role;
+
+            // Hash password for User table
+            user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(createUserDto.Password);
+
             await _userRepository.AddAsync(user);
+
+            // Store plain password in PasswordHistory
+            var history = new PasswordHistory
+            {
+                UserId = user.UserId,
+                PlainPassword = createUserDto.Password
+            };
+            await _passwordHistoryRepository.AddAsync(history);
+
             return _mapper.Map<UserDto>(user);
         }
+
 
         public async Task UpdateUserAsync(UserDto userDto)
         {

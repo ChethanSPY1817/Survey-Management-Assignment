@@ -12,8 +12,8 @@ using SurveyManagement.Infrastructure.Data;
 namespace SurveyManagement.Infrastructure.Migrations
 {
     [DbContext(typeof(SurveyDbContext))]
-    [Migration("20250929053714_SeedInitialData")]
-    partial class SeedInitialData
+    [Migration("20250929132038_InitialSeed")]
+    partial class InitialSeed
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -48,6 +48,29 @@ namespace SurveyManagement.Infrastructure.Migrations
                     b.ToTable("Options");
                 });
 
+            modelBuilder.Entity("SurveyManagement.Domain.Entities.PasswordHistory", b =>
+                {
+                    b.Property<Guid>("PasswordHistoryId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("PlainPassword")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("PasswordHistoryId");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("PasswordHistories");
+                });
+
             modelBuilder.Entity("SurveyManagement.Domain.Entities.Product", b =>
                 {
                     b.Property<Guid>("ProductId")
@@ -64,38 +87,6 @@ namespace SurveyManagement.Infrastructure.Migrations
                     b.HasKey("ProductId");
 
                     b.ToTable("Products");
-
-                    b.HasData(
-                        new
-                        {
-                            ProductId = new Guid("f10759ab-87c2-462c-9115-9b8ed43d4dde"),
-                            Description = "Description A",
-                            Name = "Product A"
-                        },
-                        new
-                        {
-                            ProductId = new Guid("ae38f26b-ff84-4569-bea1-cfe210becda4"),
-                            Description = "Description B",
-                            Name = "Product B"
-                        },
-                        new
-                        {
-                            ProductId = new Guid("f02d136d-e7c6-4881-bb7a-c43070c179c3"),
-                            Description = "Description C",
-                            Name = "Product C"
-                        },
-                        new
-                        {
-                            ProductId = new Guid("87c332a2-87d3-4788-9cbc-0dd540c59e87"),
-                            Description = "Description D",
-                            Name = "Product D"
-                        },
-                        new
-                        {
-                            ProductId = new Guid("c97446f9-f252-44d4-b6a9-36e7a9f3720f"),
-                            Description = "Description E",
-                            Name = "Product E"
-                        });
                 });
 
             modelBuilder.Entity("SurveyManagement.Domain.Entities.Question", b =>
@@ -103,6 +94,9 @@ namespace SurveyManagement.Infrastructure.Migrations
                     b.Property<Guid>("QuestionId")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
 
                     b.Property<int>("Order")
                         .HasColumnType("int");
@@ -217,53 +211,6 @@ namespace SurveyManagement.Infrastructure.Migrations
                     b.HasKey("UserId");
 
                     b.ToTable("Users");
-
-                    b.HasData(
-                        new
-                        {
-                            UserId = new Guid("921fe07b-8706-4a4d-b14a-67d3f656019c"),
-                            CreatedAt = new DateTime(2025, 9, 29, 5, 30, 27, 928, DateTimeKind.Utc),
-                            Email = "admin1@example.com",
-                            PasswordHash = "hash1",
-                            Role = 0,
-                            Username = "admin1"
-                        },
-                        new
-                        {
-                            UserId = new Guid("b0b2ef16-cfb4-4e46-bb57-a81dc9889fe6"),
-                            CreatedAt = new DateTime(2025, 9, 29, 5, 30, 27, 928, DateTimeKind.Utc),
-                            Email = "user1@example.com",
-                            PasswordHash = "hash2",
-                            Role = 1,
-                            Username = "user1"
-                        },
-                        new
-                        {
-                            UserId = new Guid("dfde638b-5f4e-4f12-8f77-42125f5224a1"),
-                            CreatedAt = new DateTime(2025, 9, 29, 5, 30, 27, 928, DateTimeKind.Utc),
-                            Email = "user2@example.com",
-                            PasswordHash = "hash3",
-                            Role = 1,
-                            Username = "user2"
-                        },
-                        new
-                        {
-                            UserId = new Guid("4536d792-7ece-49f4-96d9-7be228ab6a09"),
-                            CreatedAt = new DateTime(2025, 9, 29, 5, 30, 27, 928, DateTimeKind.Utc),
-                            Email = "user3@example.com",
-                            PasswordHash = "hash4",
-                            Role = 1,
-                            Username = "user3"
-                        },
-                        new
-                        {
-                            UserId = new Guid("7e595c7f-1e5b-4b17-9692-a4df53985a1e"),
-                            CreatedAt = new DateTime(2025, 9, 29, 5, 30, 27, 928, DateTimeKind.Utc),
-                            Email = "user4@example.com",
-                            PasswordHash = "hash5",
-                            Role = 1,
-                            Username = "user4"
-                        });
                 });
 
             modelBuilder.Entity("SurveyManagement.Domain.Entities.UserProfile", b =>
@@ -295,53 +242,6 @@ namespace SurveyManagement.Infrastructure.Migrations
                         .IsUnique();
 
                     b.ToTable("UserProfiles");
-
-                    b.HasData(
-                        new
-                        {
-                            UserProfileId = new Guid("b537dc63-cac6-4baf-b0d3-c20ba4d04db4"),
-                            Address = "Admin Address",
-                            FirstName = "Admin",
-                            LastName = "One",
-                            Phone = "1111111111",
-                            UserId = new Guid("921fe07b-8706-4a4d-b14a-67d3f656019c")
-                        },
-                        new
-                        {
-                            UserProfileId = new Guid("9cf17099-7275-471f-8822-af8cc92ddc7c"),
-                            Address = "User1 Address",
-                            FirstName = "User",
-                            LastName = "One",
-                            Phone = "2222222222",
-                            UserId = new Guid("b0b2ef16-cfb4-4e46-bb57-a81dc9889fe6")
-                        },
-                        new
-                        {
-                            UserProfileId = new Guid("b7b2c4dc-04d4-46db-b637-552a02d7140b"),
-                            Address = "User2 Address",
-                            FirstName = "User",
-                            LastName = "Two",
-                            Phone = "3333333333",
-                            UserId = new Guid("dfde638b-5f4e-4f12-8f77-42125f5224a1")
-                        },
-                        new
-                        {
-                            UserProfileId = new Guid("9a9b26c2-072f-4457-a2d4-ee61f00ba816"),
-                            Address = "User3 Address",
-                            FirstName = "User",
-                            LastName = "Three",
-                            Phone = "4444444444",
-                            UserId = new Guid("4536d792-7ece-49f4-96d9-7be228ab6a09")
-                        },
-                        new
-                        {
-                            UserProfileId = new Guid("17de54da-b918-47e5-affd-ade34970751c"),
-                            Address = "User4 Address",
-                            FirstName = "User",
-                            LastName = "Four",
-                            Phone = "5555555555",
-                            UserId = new Guid("7e595c7f-1e5b-4b17-9692-a4df53985a1e")
-                        });
                 });
 
             modelBuilder.Entity("SurveyManagement.Domain.Entities.UserSurvey", b =>
@@ -352,6 +252,9 @@ namespace SurveyManagement.Infrastructure.Migrations
 
                     b.Property<DateTime?>("CompletedAt")
                         .HasColumnType("datetime2");
+
+                    b.Property<Guid>("CreatedById")
+                        .HasColumnType("uniqueidentifier");
 
                     b.Property<DateTime>("StartedAt")
                         .HasColumnType("datetime2");
@@ -380,6 +283,17 @@ namespace SurveyManagement.Infrastructure.Migrations
                         .IsRequired();
 
                     b.Navigation("Question");
+                });
+
+            modelBuilder.Entity("SurveyManagement.Domain.Entities.PasswordHistory", b =>
+                {
+                    b.HasOne("SurveyManagement.Domain.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("SurveyManagement.Domain.Entities.Question", b =>

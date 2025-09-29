@@ -28,11 +28,15 @@ namespace SurveyManagement.Application.Services
             return _mapper.Map<ProductDto>(product);
         }
 
-        public async Task CreateAsync(CreateProductDto dto)
+        // ✅ Updated to return ProductDto
+        public async Task<ProductDto> CreateAsync(CreateProductDto dto)
         {
             var product = _mapper.Map<Product>(dto);
             product.ProductId = Guid.NewGuid();
+
             await _repo.AddAsync(product);
+
+            return _mapper.Map<ProductDto>(product);
         }
 
         public async Task UpdateAsync(ProductDto dto)

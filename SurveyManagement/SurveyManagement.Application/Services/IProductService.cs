@@ -6,7 +6,7 @@ namespace SurveyManagement.Application.Services
     {
         Task<IEnumerable<ProductDto>> GetAllAsync();
         Task<ProductDto?> GetByIdAsync(Guid productId);
-        Task CreateAsync(CreateProductDto dto);
+        Task<ProductDto> CreateAsync(CreateProductDto dto);
         Task UpdateAsync(ProductDto dto);
         Task DeleteAsync(Guid productId);
     }
