@@ -5,7 +5,7 @@ using SurveyManagement.Application.DTOs.AuthDTOs;
 using SurveyManagement.Domain.Entities;
 using SurveyManagement.Domain.Exceptions;
 using SurveyManagement.Domain.Interfaces;
-using System.Data;
+using SurveyManagement.CrossCutting.Logging;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
@@ -16,42 +16,75 @@ namespace SurveyManagement.Application.Services
     {
         private readonly IUserRepository _userRepository;
         private readonly IConfiguration _configuration;
+        private readonly IServiceLogger<AuthService> _logger;
 
-        public AuthService(IUserRepository userRepository, IConfiguration configuration)
+        public AuthService(
+            IUserRepository userRepository,
+            IConfiguration configuration,
+            IServiceLogger<AuthService> logger)
         {
             _userRepository = userRepository;
             _configuration = configuration;
+            _logger = logger;
         }
 
         public async Task<AuthResponseDto> LoginAsync(LoginDto loginDto)
         {
-            var users = await _userRepository.GetAllAsync();
-            var user = users.FirstOrDefault(u => u.Email == loginDto.Email);
+            try
+            {
+                _logger.LogInformation($"Attempting login for email: {loginDto.Email}");
 
-            if (user == null || !BCrypt.Net.BCrypt.Verify(loginDto.Password, user.PasswordHash))
-                throw new UnauthorizedAccessException("Invalid email or password.");
+                var users = await _userRepository.GetAllAsync();
+                var user = users.FirstOrDefault(u => u.Email == loginDto.Email);
 
-            return GenerateJwt(user);
+                if (user == null || !BCrypt.Net.BCrypt.Verify(loginDto.Password, user.PasswordHash))
+                {
+                    _logger.LogWarning($"Login failed for email: {loginDto.Email}");
+                    throw new UnauthorizedAccessException("Invalid email or password.");
+                }
+
+                _logger.LogInformation($"Login successful for email: {loginDto.Email}");
+                return GenerateJwt(user);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"Exception occurred during login for email: {loginDto.Email}", ex);
+                throw;
+            }
         }
 
         public async Task<AuthResponseDto> RegisterAsync(RegisterDto registerDto)
         {
-            var users = await _userRepository.GetAllAsync();
-            if (users.Any(u => u.Email == registerDto.Email))
-                throw new BadRequestException("Email is already registered.");
-
-            var newUser = new User
+            try
             {
-                UserId = Guid.NewGuid(),
-                Username = registerDto.Username,
-                Email = registerDto.Email,
-                PasswordHash = BCrypt.Net.BCrypt.HashPassword(registerDto.Password),
-                Role = Enum.Parse<UserRole>(registerDto.Role, ignoreCase: true)
-            };
+                _logger.LogInformation($"Attempting registration for email: {registerDto.Email}");
 
-            await _userRepository.AddAsync(newUser);
+                var users = await _userRepository.GetAllAsync();
+                if (users.Any(u => u.Email == registerDto.Email))
+                {
+                    _logger.LogWarning($"Registration failed: email already exists - {registerDto.Email}");
+                    throw new BadRequestException("Email is already registered.");
+                }
 
-            return GenerateJwt(newUser);
+                var newUser = new User
+                {
+                    UserId = Guid.NewGuid(),
+                    Username = registerDto.Username,
+                    Email = registerDto.Email,
+                    PasswordHash = BCrypt.Net.BCrypt.HashPassword(registerDto.Password),
+                    Role = Enum.Parse<UserRole>(registerDto.Role, ignoreCase: true)
+                };
+
+                await _userRepository.AddAsync(newUser);
+
+                _logger.LogInformation($"User registered successfully with ID: {newUser.UserId}");
+                return GenerateJwt(newUser);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"Exception occurred during registration for email: {registerDto.Email}", ex);
+                throw;
+            }
         }
 
         private AuthResponseDto GenerateJwt(User user)
@@ -78,6 +111,8 @@ namespace SurveyManagement.Application.Services
             };
 
             var token = tokenHandler.CreateToken(tokenDescriptor);
+
+            _logger.LogInformation($"JWT generated for user ID: {user.UserId}");
 
             return new AuthResponseDto
             {

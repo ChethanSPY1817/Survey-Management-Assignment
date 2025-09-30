@@ -9,13 +9,22 @@ using SurveyManagement.Domain.Exceptions;
 using SurveyManagement.Domain.Interfaces;
 using SurveyManagement.Infrastructure.Data;
 using SurveyManagement.Infrastructure.Repositories;
+using SurveyManagement.CrossCutting.Logging;
+using Serilog;
 using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// ✅ Configure Serilog
+LoggerConfigurator.ConfigureLogging(builder.Configuration);
+builder.Host.UseSerilog();
+
 // Add DbContext
 builder.Services.AddDbContext<SurveyDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("SurveyDb")));
+
+// After configuring Serilog
+builder.Services.AddSingleton(typeof(IServiceLogger<>), typeof(ServiceLogger<>));
 
 // Register Repositories
 builder.Services.AddScoped<IUserRepository, UserRepository>();
@@ -52,10 +61,9 @@ builder.Services.AddAutoMapper(typeof(SurveyManagement.Application.Mapping.UserS
 // Add Controllers
 builder.Services.AddControllers();
 
-// JWT Authentication
+// JWT Authentication (unchanged)
 var jwtSettings = builder.Configuration.GetSection("JwtSettings");
 var secretKey = jwtSettings.GetValue<string>("SecretKey");
-
 builder.Services.AddAuthentication(options =>
 {
     options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
@@ -106,14 +114,14 @@ builder.Services.AddAuthentication(options =>
     };
 });
 
-// Add Authorization
+// Authorization
 builder.Services.AddAuthorization(options =>
 {
     options.AddPolicy("AdminOnly", policy => policy.RequireRole("Admin"));
     options.AddPolicy("RespondentOnly", policy => policy.RequireRole("Respondent"));
 });
 
-// Swagger / OpenAPI with JWT support
+// Swagger/OpenAPI
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {
@@ -156,13 +164,14 @@ using (var scope = app.Services.CreateScope())
     DbInitializer.Initialize(context);
 }
 
-// Configure middleware
-app.UseGlobalExceptionMiddleware(); // <-- before authentication
-
+// ✅ Middleware order
+app.UseGlobalExceptionMiddleware(); // exception middleware
+app.UseSerilogRequestLogging();      // Serilog request logging
 app.UseHttpsRedirection();
 app.UseAuthentication();
 app.UseAuthorization();
 
+// Swagger
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
@@ -173,6 +182,7 @@ if (app.Environment.IsDevelopment())
     });
 }
 
+// Map controllers
 app.MapControllers();
 
 // Health-check endpoint
