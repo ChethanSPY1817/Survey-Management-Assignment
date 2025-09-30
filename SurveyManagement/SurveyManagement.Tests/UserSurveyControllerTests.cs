@@ -1,110 +1,135 @@
-﻿using NUnit.Framework;
+﻿using Microsoft.AspNetCore.Mvc;
 using Moq;
-using Microsoft.AspNetCore.Mvc;
+using NUnit.Framework;
 using SurveyManagement.API.Controllers;
-using SurveyManagement.Application.Services;
 using SurveyManagement.Application.DTOs.UserSurveyDTOs;
+using SurveyManagement.Application.Services;
+using SurveyManagement.Domain.Exceptions;
 using System;
 using System.Collections.Generic;
+using System.Security.Claims;
 using System.Threading.Tasks;
-using System.Linq;
+using Microsoft.AspNetCore.Http;
 
-namespace SurveyManagement.Tests
+namespace SurveyManagement.Tests.Controllers
 {
     [TestFixture]
     public class UserSurveyControllerTests
     {
-        private Mock<IUserSurveyService> _mockService = null!;
+        private Mock<IUserSurveyService> _serviceMock = null!;
         private UserSurveyController _controller = null!;
 
         [SetUp]
         public void Setup()
         {
-            _mockService = new Mock<IUserSurveyService>();
-            _controller = new UserSurveyController(_mockService.Object);
+            _serviceMock = new Mock<IUserSurveyService>();
+            _controller = new UserSurveyController(_serviceMock.Object);
+
+            // Mock HttpContext to provide a logged-in user
+            var user = new ClaimsPrincipal(new ClaimsIdentity(new Claim[]
+            {
+                new Claim(ClaimTypes.NameIdentifier, Guid.NewGuid().ToString())
+            }, "mock"));
+
+            _controller.ControllerContext = new ControllerContext
+            {
+                HttpContext = new DefaultHttpContext { User = user }
+            };
         }
 
         [Test]
-        public async Task GetAll_ReturnsOkResult_WithUserSurveys()
+        public async Task GetAll_ReturnsOk_WithUserSurveys()
         {
-            var list = new List<UserSurveyDto> { new UserSurveyDto { UserSurveyId = Guid.NewGuid() } };
-            _mockService.Setup(s => s.GetAllUserSurveysAsync()).ReturnsAsync(list);
+            var surveys = new List<UserSurveyDto> { new UserSurveyDto { UserSurveyId = Guid.NewGuid() } };
+            _serviceMock.Setup(s => s.GetUserSurveysByCreatorIdAsync(It.IsAny<Guid>()))
+                        .ReturnsAsync(surveys);
 
-            var result = await _controller.GetAll();
-            var okResult = result as OkObjectResult;
-            var surveys = okResult?.Value as IEnumerable<UserSurveyDto>;
+            var result = await _controller.GetAll() as OkObjectResult;
 
-            Assert.That(okResult, Is.Not.Null);
-            Assert.That(surveys?.Count() ?? 0, Is.EqualTo(1));
+            Assert.That(result, Is.Not.Null);
+            Assert.That(result!.Value, Is.EqualTo(surveys));
         }
 
         [Test]
-        public async Task GetById_ReturnsOkResult_WhenExists()
+        public async Task GetById_ReturnsOk_WhenSurveyExists()
         {
-            var id = Guid.NewGuid();
-            var survey = new UserSurveyDto { UserSurveyId = id };
-            _mockService.Setup(s => s.GetUserSurveyByIdAsync(id)).ReturnsAsync(survey);
+            var surveyId = Guid.NewGuid();
+            var survey = new UserSurveyDto { UserSurveyId = surveyId, CreatedById = Guid.Parse(_controller.User.FindFirstValue(ClaimTypes.NameIdentifier)!) };
+            _serviceMock.Setup(s => s.GetUserSurveyByIdAsync(surveyId)).ReturnsAsync(survey);
 
-            var result = await _controller.GetById(id);
-            var okResult = result as OkObjectResult;
-            var returnedSurvey = okResult?.Value as UserSurveyDto;
+            var result = await _controller.GetById(surveyId) as OkObjectResult;
 
-            Assert.That(okResult, Is.Not.Null);
-            Assert.That(returnedSurvey?.UserSurveyId, Is.EqualTo(id));
+            Assert.That(result, Is.Not.Null);
+            Assert.That(result!.Value, Is.EqualTo(survey));
         }
 
         [Test]
-        public async Task GetById_ReturnsNotFound_WhenDoesNotExist()
+        public void GetById_ThrowsNotFoundException_WhenSurveyNotFound()
         {
-            var id = Guid.NewGuid();
-            _mockService.Setup(s => s.GetUserSurveyByIdAsync(id)).ReturnsAsync((UserSurveyDto?)null);
+            var surveyId = Guid.NewGuid();
+            _serviceMock.Setup(s => s.GetUserSurveyByIdAsync(surveyId)).ReturnsAsync((UserSurveyDto?)null);
 
-            var result = await _controller.GetById(id);
-            Assert.That(result, Is.TypeOf<NotFoundResult>());
+            Assert.That(async () => await _controller.GetById(surveyId),
+                        Throws.TypeOf<NotFoundException>());
         }
 
         [Test]
-        public async Task Create_ReturnsCreatedAtAction()
+        public async Task Create_ReturnsCreatedAtAction_WhenSuccessful()
         {
-            var createDto = new CreateUserSurveyDto { UserId = Guid.NewGuid(), SurveyId = Guid.NewGuid() };
-            var created = new UserSurveyDto { UserSurveyId = Guid.NewGuid() };
-            //_mockService.Setup(s => s.CreateUserSurveyAsync(createDto)).ReturnsAsync(created);
+            var dto = new CreateUserSurveyDto { Title = "Test" };
+            var createdSurvey = new UserSurveyDto { UserSurveyId = Guid.NewGuid() };
+            _serviceMock.Setup(s => s.CreateUserSurveyAsync(dto, It.IsAny<Guid>()))
+                        .ReturnsAsync(createdSurvey);
 
-            var result = await _controller.Create(createDto);
-            var createdResult = result as CreatedAtActionResult;
-            var returnedSurvey = createdResult?.Value as UserSurveyDto;
+            var result = await _controller.Create(dto) as CreatedAtActionResult;
 
-            Assert.That(createdResult, Is.Not.Null);
-            Assert.That(returnedSurvey?.UserSurveyId, Is.EqualTo(created.UserSurveyId));
+            Assert.That(result, Is.Not.Null);
+            Assert.That(result!.Value, Is.EqualTo(createdSurvey));
+        }
+
+        [Test]
+        public void Create_ThrowsBadRequestException_WhenDtoIsNull()
+        {
+            Assert.That(async () => await _controller.Create(null!), Throws.TypeOf<BadRequestException>());
         }
 
         [Test]
         public async Task Update_ReturnsNoContent_WhenSuccessful()
         {
-            var id = Guid.NewGuid();
-            var dto = new UserSurveyDto { UserSurveyId = id };
-            _mockService.Setup(s => s.UpdateUserSurveyAsync(dto)).Returns(Task.CompletedTask);
+            var userId = Guid.Parse(_controller.User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+            var surveyId = Guid.NewGuid();
+            var dto = new UserSurveyDto { UserSurveyId = surveyId, CreatedById = userId };
 
-            var result = await _controller.Update(id, dto);
-            Assert.That(result, Is.TypeOf<NoContentResult>());
+            _serviceMock.Setup(s => s.GetUserSurveyByIdAsync(surveyId)).ReturnsAsync(dto);
+            _serviceMock.Setup(s => s.UpdateUserSurveyAsync(dto)).Returns(Task.CompletedTask);
+
+            var result = await _controller.Update(surveyId, dto) as NoContentResult;
+
+            Assert.That(result, Is.Not.Null);
+            Assert.That(result!.StatusCode, Is.EqualTo(204));
         }
 
         [Test]
-        public async Task Update_ReturnsBadRequest_WhenIdMismatch()
+        public void Update_ThrowsBadRequestException_WhenIdMismatch()
         {
             var dto = new UserSurveyDto { UserSurveyId = Guid.NewGuid() };
-            var result = await _controller.Update(Guid.NewGuid(), dto);
-            Assert.That(result, Is.TypeOf<BadRequestObjectResult>());
+            Assert.That(async () => await _controller.Update(Guid.NewGuid(), dto), Throws.TypeOf<BadRequestException>());
         }
 
         [Test]
-        public async Task Delete_ReturnsNoContent()
+        public async Task Delete_ReturnsNoContent_WhenSuccessful()
         {
-            var id = Guid.NewGuid();
-            _mockService.Setup(s => s.DeleteUserSurveyAsync(id)).Returns(Task.CompletedTask);
+            var userId = Guid.Parse(_controller.User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+            var surveyId = Guid.NewGuid();
+            var survey = new UserSurveyDto { UserSurveyId = surveyId, CreatedById = userId };
 
-            var result = await _controller.Delete(id);
-            Assert.That(result, Is.TypeOf<NoContentResult>());
+            _serviceMock.Setup(s => s.GetUserSurveyByIdAsync(surveyId)).ReturnsAsync(survey);
+            _serviceMock.Setup(s => s.DeleteUserSurveyAsync(surveyId)).Returns(Task.CompletedTask);
+
+            var result = await _controller.Delete(surveyId) as NoContentResult;
+
+            Assert.That(result, Is.Not.Null);
+            Assert.That(result!.StatusCode, Is.EqualTo(204));
         }
     }
 }

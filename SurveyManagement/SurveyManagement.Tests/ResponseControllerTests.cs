@@ -1,139 +1,132 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
+﻿using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Moq;
 using NUnit.Framework;
 using SurveyManagement.API.Controllers;
 using SurveyManagement.Application.DTOs.ResponseDTOs;
 using SurveyManagement.Application.Services;
+using SurveyManagement.Domain.Exceptions;
+using System;
+using System.Collections.Generic;
+using System.Security.Claims;
+using System.Threading.Tasks;
 
-namespace SurveyManagement.Tests
+namespace SurveyManagement.Tests.Controllers
 {
     [TestFixture]
     public class ResponseControllerTests
     {
-        private Mock<IResponseService> _mockService = null!;
+        private Mock<IResponseService> _serviceMock = null!;
         private ResponseController _controller = null!;
 
         [SetUp]
         public void Setup()
         {
-            _mockService = new Mock<IResponseService>();
-            _controller = new ResponseController(_mockService.Object);
+            _serviceMock = new Mock<IResponseService>();
+            _controller = new ResponseController(_serviceMock.Object);
         }
 
         [Test]
-        public async Task GetAll_ReturnsOkResult_WithResponses()
+        public async Task GetAll_ReturnsOk_WithResponses()
         {
-            _mockService.Setup(s => s.GetAllResponsesAsync())
-                .ReturnsAsync(new List<ResponseDto> { new ResponseDto { TextAnswer = "Answer1" } });
+            var responses = new List<ResponseDto> { new ResponseDto { ResponseId = Guid.NewGuid() } };
+            _serviceMock.Setup(s => s.GetAllResponsesAsync()).ReturnsAsync(responses);
 
-            var result = await _controller.GetAll();
-            var okResult = result as OkObjectResult;
-            var responses = okResult?.Value as IEnumerable<ResponseDto>;
+            var result = await _controller.GetAll() as OkObjectResult;
 
-            Assert.That(okResult, Is.Not.Null);
-            Assert.That(responses?.Count() ?? 0, Is.EqualTo(1));
+            Assert.That(result, Is.Not.Null);
+            Assert.That(result!.Value, Is.EqualTo(responses));
         }
 
         [Test]
-        public async Task GetById_ReturnsOkResult_WhenResponseExists()
+        public async Task GetById_ReturnsOk_WhenResponseExists()
         {
-            var id = Guid.NewGuid();
-            _mockService.Setup(s => s.GetResponseByIdAsync(id))
-                .ReturnsAsync(new ResponseDto { ResponseId = id, TextAnswer = "Answer1" });
+            var responseId = Guid.NewGuid();
+            var response = new ResponseDto { ResponseId = responseId };
+            _serviceMock.Setup(s => s.GetResponseByIdAsync(responseId)).ReturnsAsync(response);
 
-            var result = await _controller.GetById(id);
-            var okResult = result as OkObjectResult;
-            var response = okResult?.Value as ResponseDto;
+            var result = await _controller.GetById(responseId) as OkObjectResult;
 
-            Assert.That(okResult, Is.Not.Null);
-            Assert.That(response?.ResponseId, Is.EqualTo(id));
+            Assert.That(result, Is.Not.Null);
+            Assert.That(result!.Value, Is.EqualTo(response));
         }
 
         [Test]
-        public async Task GetById_ReturnsNotFound_WhenResponseDoesNotExist()
+        public void GetById_ThrowsNotFoundException_WhenResponseDoesNotExist()
         {
-            var id = Guid.NewGuid();
-            _mockService.Setup(s => s.GetResponseByIdAsync(id))
-                .ReturnsAsync((ResponseDto?)null);
+            var responseId = Guid.NewGuid();
+            _serviceMock.Setup(s => s.GetResponseByIdAsync(responseId))
+                        .ThrowsAsync(new NotFoundException("Response", responseId));
 
-            var result = await _controller.GetById(id);
-            Assert.That(result, Is.TypeOf<NotFoundResult>());
+            Assert.That(async () => await _controller.GetById(responseId),
+                        Throws.TypeOf<NotFoundException>());
         }
 
         [Test]
-        public async Task Create_ReturnsOkResult()
+        public async Task Create_ReturnsOk_WithCreatedResponse()
         {
-            var createDto = new CreateResponseDto
+            var createDto = new CreateResponseDto { UserSurveyId = Guid.NewGuid() };
+            var createdResponse = new ResponseDto { ResponseId = Guid.NewGuid() };
+            _serviceMock.Setup(s => s.CreateResponseAsync(createDto)).ReturnsAsync(createdResponse);
+
+            // Mock User claims
+            var user = new ClaimsPrincipal(new ClaimsIdentity(new Claim[]
             {
-                UserSurveyId = Guid.NewGuid(),
-                QuestionId = Guid.NewGuid(),
-                TextAnswer = "Test Answer"
+                new Claim(ClaimTypes.NameIdentifier, Guid.NewGuid().ToString())
+            }, "mock"));
+            _controller.ControllerContext = new ControllerContext()
+            {
+                HttpContext = new DefaultHttpContext() { User = user }
             };
 
-            var result = await _controller.Create(createDto);
-            var okResult = result as OkObjectResult;
+            var result = await _controller.Create(createDto) as OkObjectResult;
 
-            Assert.That(okResult, Is.Not.Null);
-            Assert.That(okResult?.Value, Is.EqualTo(createDto));
+            Assert.That(result, Is.Not.Null);
+            var value = result!.Value as ResponseDto; // cast to correct type
+            Assert.That(value, Is.Not.Null);
+            Assert.That(value!.ResponseId, Is.EqualTo(createdResponse.ResponseId));
         }
 
         [Test]
-        public async Task Update_ReturnsNoContent_WhenSuccessful()
+        public void Create_ThrowsBadRequestException_WhenDtoIsNull()
         {
-            var id = Guid.NewGuid();
-            var responseDto = new ResponseDto
-            {
-                ResponseId = id,
-                TextAnswer = "Updated Answer"
-            };
-
-            _mockService.Setup(s => s.GetResponseByIdAsync(id)).ReturnsAsync(responseDto);
-
-            var result = await _controller.Update(id, responseDto);
-            Assert.That(result, Is.TypeOf<NoContentResult>());
+            Assert.That(async () => await _controller.Create(null!),
+                        Throws.TypeOf<BadRequestException>());
         }
 
         [Test]
-        public async Task Update_ReturnsBadRequest_WhenIdMismatch()
+        public async Task Update_ReturnsOk_WithUpdatedResponse()
         {
-            var responseDto = new ResponseDto
-            {
-                ResponseId = Guid.NewGuid(),
-                TextAnswer = "Updated Answer"
-            };
+            var responseId = Guid.NewGuid();
+            var responseDto = new ResponseDto { ResponseId = responseId };
+            _serviceMock.Setup(s => s.UpdateResponseAsync(responseDto)).ReturnsAsync(responseDto);
 
-            var result = await _controller.Update(Guid.NewGuid(), responseDto);
-            Assert.That(result, Is.TypeOf<BadRequestObjectResult>());
+            var result = await _controller.Update(responseId, responseDto) as OkObjectResult;
+
+            Assert.That(result, Is.Not.Null);
+            var value = result!.Value as ResponseDto;
+            Assert.That(value, Is.Not.Null);
+            Assert.That(value!.ResponseId, Is.EqualTo(responseDto.ResponseId));
+        }
+
+        [Test]
+        public void Update_ThrowsBadRequestException_WhenIdMismatch()
+        {
+            var responseDto = new ResponseDto { ResponseId = Guid.NewGuid() };
+            Assert.That(async () => await _controller.Update(Guid.NewGuid(), responseDto),
+                        Throws.TypeOf<BadRequestException>());
         }
 
         [Test]
         public async Task Delete_ReturnsNoContent_WhenSuccessful()
         {
-            var id = Guid.NewGuid();
-            var responseDto = new ResponseDto
-            {
-                ResponseId = id,
-                TextAnswer = "Answer to Delete"
-            };
+            var responseId = Guid.NewGuid();
+            _serviceMock.Setup(s => s.DeleteResponseAsync(responseId)).Returns(Task.CompletedTask);
 
-            _mockService.Setup(s => s.GetResponseByIdAsync(id)).ReturnsAsync(responseDto);
+            var result = await _controller.Delete(responseId) as NoContentResult;
 
-            var result = await _controller.Delete(id);
-            Assert.That(result, Is.TypeOf<NoContentResult>());
-        }
-
-        [Test]
-        public async Task Delete_ReturnsNotFound_WhenResponseDoesNotExist()
-        {
-            var id = Guid.NewGuid();
-            _mockService.Setup(s => s.GetResponseByIdAsync(id)).ReturnsAsync((ResponseDto?)null);
-
-            var result = await _controller.Delete(id);
-            Assert.That(result, Is.TypeOf<NotFoundResult>());
+            Assert.That(result, Is.Not.Null);
+            Assert.That(result!.StatusCode, Is.EqualTo(204));
         }
     }
 }

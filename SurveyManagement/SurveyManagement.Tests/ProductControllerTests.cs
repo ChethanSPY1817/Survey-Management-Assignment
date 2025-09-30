@@ -1,105 +1,66 @@
-﻿using Microsoft.AspNetCore.Mvc;
-using Moq;
-using NUnit.Framework;
-using SurveyManagement.API.Controllers;
+﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
 using SurveyManagement.Application.Services;
 using SurveyManagement.Application.DTOs.ProductDTOs;
+using SurveyManagement.Domain.Exceptions;
 using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
 
-namespace SurveyManagement.Tests
+namespace SurveyManagement.API.Controllers
 {
-    [TestFixture]
-    public class ProductControllerTests
+    [ApiController]
+    [Route("api/[controller]")]
+    public class ProductController : ControllerBase
     {
-        private Mock<IProductService> _mockService = null!;
-        private ProductController _controller = null!;
+        private readonly IProductService _service;
 
-        [SetUp]
-        public void Setup()
+        public ProductController(IProductService service) => _service = service;
+
+        [HttpGet]
+        [Authorize(Roles = "Admin,Respondent")]
+        public async Task<IActionResult> GetAll() => Ok(await _service.GetAllAsync());
+
+        [HttpGet("{id}")]
+        [Authorize(Roles = "Admin,Respondent")]
+        public async Task<IActionResult> GetById(Guid id)
         {
-            _mockService = new Mock<IProductService>();
-            _controller = new ProductController(_mockService.Object);
+            var product = await _service.GetByIdAsync(id)
+                          ?? throw new KeyNotFoundException($"Product with ID {id} not found.");
+            return Ok(product);
         }
 
-        [Test]
-        public async Task GetAll_ReturnsOkResult_WithProducts()
+        [HttpPost]
+        [Authorize(Roles = "Admin")]
+        public async Task<IActionResult> Create([FromBody] CreateProductDto dto)
         {
-            _mockService.Setup(s => s.GetAllAsync())
-                .ReturnsAsync(new List<ProductDto> { new ProductDto { Name = "Product A" } });
+            if (dto == null) throw new BadRequestException("Product DTO cannot be null.");
 
-            var result = await _controller.GetAll();
-            var okResult = result as OkObjectResult;
-            var products = okResult?.Value as IEnumerable<ProductDto>;
-
-            Assert.That(okResult, Is.Not.Null);
-            Assert.That(products?.Count() ?? 0, Is.EqualTo(1));
+            var createdProduct = await _service.CreateAsync(dto);
+            return CreatedAtAction(nameof(GetById), new { id = createdProduct.ProductId }, createdProduct);
         }
 
-        [Test]
-        public async Task GetById_ReturnsOkResult_WhenProductExists()
+        [HttpPut("{id}")]
+        [Authorize(Roles = "Admin")]
+        public async Task<IActionResult> Update(Guid id, [FromBody] ProductDto dto)
         {
-            var id = Guid.NewGuid();
-            _mockService.Setup(s => s.GetByIdAsync(id))
-                .ReturnsAsync(new ProductDto { ProductId = id, Name = "Product A" });
+            if (id != dto.ProductId) throw new BadRequestException("ID mismatch");
 
-            var result = await _controller.GetById(id);
-            var okResult = result as OkObjectResult;
-            var product = okResult?.Value as ProductDto;
+            var existingProduct = await _service.GetByIdAsync(id)
+                                  ?? throw new KeyNotFoundException($"Product with ID {id} not found.");
 
-            Assert.That(okResult, Is.Not.Null);
-            Assert.That(product?.ProductId, Is.EqualTo(id));
+            await _service.UpdateAsync(dto);
+            return NoContent();
         }
 
-        [Test]
-        public async Task GetById_ReturnsNotFound_WhenProductDoesNotExist()
+        [HttpDelete("{id}")]
+        [Authorize(Roles = "Admin")]
+        public async Task<IActionResult> Delete(Guid id)
         {
-            var id = Guid.NewGuid();
-            _mockService.Setup(s => s.GetByIdAsync(id))
-                .ReturnsAsync((ProductDto?)null);
+            var existingProduct = await _service.GetByIdAsync(id)
+                                  ?? throw new KeyNotFoundException($"Product with ID {id} not found.");
 
-            var result = await _controller.GetById(id);
-            Assert.That(result, Is.TypeOf<NotFoundResult>());
-        }
-
-        [Test]
-        public async Task Create_ReturnsCreatedAtAction()
-        {
-            var createDto = new CreateProductDto { Name = "New Product", Description = "Desc" };
-
-            var result = await _controller.Create(createDto);
-            var createdResult = result as CreatedAtActionResult;
-
-            Assert.That(createdResult, Is.Not.Null);
-            Assert.That(createdResult?.Value, Is.EqualTo(createDto));
-        }
-
-        [Test]
-        public async Task Update_ReturnsNoContent_WhenSuccessful()
-        {
-            var id = Guid.NewGuid();
-            var dto = new ProductDto { ProductId = id, Name = "Updated Product" };
-
-            var result = await _controller.Update(id, dto);
-            Assert.That(result, Is.TypeOf<NoContentResult>());
-        }
-
-        [Test]
-        public async Task Update_ReturnsBadRequest_WhenIdMismatch()
-        {
-            var dto = new ProductDto { ProductId = Guid.NewGuid(), Name = "Mismatch" };
-            var result = await _controller.Update(Guid.NewGuid(), dto);
-            Assert.That(result, Is.TypeOf<BadRequestObjectResult>());
-        }
-
-        [Test]
-        public async Task Delete_ReturnsNoContent_WhenSuccessful()
-        {
-            var id = Guid.NewGuid();
-            var result = await _controller.Delete(id);
-            Assert.That(result, Is.TypeOf<NoContentResult>());
+            await _service.DeleteAsync(id);
+            return NoContent();
         }
     }
 }

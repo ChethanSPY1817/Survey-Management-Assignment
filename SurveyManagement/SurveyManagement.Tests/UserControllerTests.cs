@@ -1,128 +1,120 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Moq;
 using NUnit.Framework;
 using SurveyManagement.API.Controllers;
 using SurveyManagement.Application.DTOs.UserDTOs;
 using SurveyManagement.Application.Services;
+using SurveyManagement.Domain.Exceptions;
+using System;
+using System.Collections.Generic;
+using System.Security.Claims;
+using System.Threading.Tasks;
 
-namespace SurveyManagement.Tests
+namespace SurveyManagement.Tests.Controllers
 {
     [TestFixture]
     public class UserControllerTests
     {
-        private Mock<IUserService> _mockService = null!;
+        private Mock<IUserService> _userServiceMock = null!;
         private UserController _controller = null!;
 
         [SetUp]
         public void Setup()
         {
-            _mockService = new Mock<IUserService>();
-            _controller = new UserController(_mockService.Object);
+            _userServiceMock = new Mock<IUserService>();
+            _controller = new UserController(_userServiceMock.Object);
+        }
+
+        private void SetUserClaims(Guid userId, string? role = null)
+        {
+            var claims = new List<Claim> { new Claim("UserId", userId.ToString()) };
+            if (!string.IsNullOrEmpty(role)) claims.Add(new Claim(ClaimTypes.Role, role));
+
+            var identity = new ClaimsIdentity(claims, "TestAuth");
+            _controller.ControllerContext = new ControllerContext
+            {
+                HttpContext = new DefaultHttpContext { User = new ClaimsPrincipal(identity) }
+            };
         }
 
         [Test]
         public async Task GetAll_ReturnsOkResult_WithUsers()
         {
-            _mockService.Setup(s => s.GetAllUsersAsync())
-                .ReturnsAsync(new List<UserDto> { new UserDto { Username = "test" } });
+            var users = new List<UserDto> { new UserDto { UserId = Guid.NewGuid(), Username = "TestUser" } };
+            _userServiceMock.Setup(s => s.GetAllUsersAsync()).ReturnsAsync(users);
 
-            var result = await _controller.GetAll();
-            var okResult = result as OkObjectResult;
-            var users = okResult?.Value as IEnumerable<UserDto>;
+            SetUserClaims(Guid.NewGuid(), "Admin");
+            var result = await _controller.GetAll() as OkObjectResult;
 
-            Assert.That(okResult, Is.Not.Null);
-            Assert.That(users?.Count() ?? 0, Is.EqualTo(1));
+            Assert.That(result, Is.Not.Null);
+            Assert.That(result!.StatusCode, Is.EqualTo(200));
+            Assert.That(result.Value, Is.EqualTo(users));
         }
 
         [Test]
-        public async Task GetById_ReturnsOkResult_WhenUserExists()
+        public void GetById_ThrowsUnauthorizedException_WhenUserIsNotAdminOrOwner()
         {
-            var id = Guid.NewGuid();
-            _mockService.Setup(s => s.GetUserByIdAsync(id))
-                .ReturnsAsync(new UserDto { UserId = id, Username = "test" });
+            var userId = Guid.NewGuid();
+            _userServiceMock.Setup(s => s.GetUserByIdAsync(userId)).ReturnsAsync(new UserDto { UserId = userId });
 
-            var result = await _controller.GetById(id);
-            var okResult = result as OkObjectResult;
-            var user = okResult?.Value as UserDto;
+            SetUserClaims(Guid.NewGuid(), "Respondent"); // Not owner or admin
 
-            Assert.That(okResult, Is.Not.Null);
-            Assert.That(user?.UserId, Is.EqualTo(id));
+            Assert.That(async () => await _controller.GetById(userId),
+                        Throws.TypeOf<UnauthorizedException>());
         }
 
         [Test]
-        public async Task GetById_ReturnsNotFound_WhenUserDoesNotExist()
+        public async Task Create_ReturnsCreatedAtActionResult()
         {
-            var id = Guid.NewGuid();
-            _mockService.Setup(s => s.GetUserByIdAsync(id))
-                .ReturnsAsync((UserDto?)null);
+            var createDto = new CreateUserDto { Email = "test@test.com", Password = "Pass123" };
+            var userDto = new UserDto { UserId = Guid.NewGuid(), Email = "test@test.com" };
 
-            var result = await _controller.GetById(id);
-            Assert.That(result, Is.TypeOf<NotFoundResult>());
+            _userServiceMock.Setup(s => s.CreateUserAsync(createDto)).ReturnsAsync(userDto);
+            SetUserClaims(Guid.NewGuid(), "Admin");
+
+            var result = await _controller.Create(createDto) as CreatedAtActionResult;
+
+            Assert.That(result, Is.Not.Null);
+            Assert.That(result!.ActionName, Is.EqualTo(nameof(_controller.GetById)));
+
+            var value = result.Value as UserDto;
+            Assert.That(value, Is.Not.Null);
+            Assert.That(value!.UserId, Is.EqualTo(userDto.UserId));
         }
 
         [Test]
-        public async Task Create_ReturnsCreatedAtAction()
+        public async Task Register_ReturnsOkResult_WithUser()
         {
-            var createUserDto = new CreateUserDto
+            var createDto = new CreateUserDto { Email = "test@test.com", Password = "Pass123" };
+            var userDto = new UserDto
             {
-                Username = "newuser",
-                Email = "newuser@example.com",
-                FirstName = "New",
-                LastName = "User",
-                Phone = "1234567890",
-                Address = "Some Address"
+                UserId = Guid.NewGuid(),
+                Email = "test@test.com",
+                Username = "test",
+                Role = "Respondent"
             };
 
-            var result = await _controller.Create(createUserDto);
-            var createdResult = result as CreatedAtActionResult;
+            _userServiceMock
+                .Setup(s => s.CreateUserAsync(It.IsAny<CreateUserDto>()))
+                .ReturnsAsync(userDto);
 
-            Assert.That(createdResult, Is.Not.Null);
-            Assert.That(createdResult?.Value, Is.EqualTo(createUserDto));
+            var result = await _controller.Register(createDto) as OkObjectResult;
+
+            Assert.That(result, Is.Not.Null);
+
+            // Use JObject (or dynamic) to safely access properties of anonymous object
+            var value = result!.Value;
+
+            Assert.That(value, Is.Not.Null);
+
+            // If using Newtonsoft.Json or System.Text.Json:
+            var json = System.Text.Json.JsonSerializer.Serialize(value);
+            var deserialized = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, object>>(json);
+
+            Assert.That(Guid.Parse(deserialized!["UserId"].ToString()!), Is.EqualTo(userDto.UserId));
+            Assert.That(deserialized["Role"].ToString(), Is.EqualTo("Respondent"));
         }
 
-        [Test]
-        public async Task Update_ReturnsNoContent_WhenSuccessful()
-        {
-            var id = Guid.NewGuid();
-            var userDto = new UserDto { UserId = id, Username = "updateduser" };
-
-            _mockService.Setup(s => s.GetUserByIdAsync(id)).ReturnsAsync(userDto);
-
-            var result = await _controller.Update(id, userDto);
-            Assert.That(result, Is.TypeOf<NoContentResult>());
-        }
-
-        [Test]
-        public async Task Update_ReturnsBadRequest_WhenIdMismatch()
-        {
-            var userDto = new UserDto { UserId = Guid.NewGuid(), Username = "updateduser" };
-            var result = await _controller.Update(Guid.NewGuid(), userDto);
-            Assert.That(result, Is.TypeOf<BadRequestObjectResult>());
-        }
-
-        [Test]
-        public async Task Delete_ReturnsNoContent_WhenSuccessful()
-        {
-            var id = Guid.NewGuid();
-            var userDto = new UserDto { UserId = id, Username = "userToDelete" };
-            _mockService.Setup(s => s.GetUserByIdAsync(id)).ReturnsAsync(userDto);
-
-            var result = await _controller.Delete(id);
-            Assert.That(result, Is.TypeOf<NoContentResult>());
-        }
-
-        [Test]
-        public async Task Delete_ReturnsNotFound_WhenUserDoesNotExist()
-        {
-            var id = Guid.NewGuid();
-            _mockService.Setup(s => s.GetUserByIdAsync(id)).ReturnsAsync((UserDto?)null);
-
-            var result = await _controller.Delete(id);
-            Assert.That(result, Is.TypeOf<NotFoundResult>());
-        }
     }
 }

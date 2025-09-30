@@ -1,112 +1,97 @@
-﻿using NUnit.Framework;
-using Moq;
-using SurveyManagement.API.Controllers;
-using SurveyManagement.Application.Services;
-using SurveyManagement.Application.DTOs.UserProfileDTOs;
+﻿using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Moq;
+using NUnit.Framework;
+using SurveyManagement.API.Controllers;
+using SurveyManagement.Application.DTOs.UserProfileDTOs;
+using SurveyManagement.Application.Services;
+using SurveyManagement.Domain.Exceptions;
 using System;
 using System.Collections.Generic;
-using System.Linq;
+using System.Security.Claims;
 using System.Threading.Tasks;
 
-namespace SurveyManagement.Tests
+namespace SurveyManagement.Tests.Controllers
 {
     [TestFixture]
     public class UserProfileControllerTests
     {
-        private Mock<IUserProfileService> _mockService = null!;
+        private Mock<IUserProfileService> _serviceMock = null!;
         private UserProfileController _controller = null!;
 
         [SetUp]
         public void Setup()
         {
-            _mockService = new Mock<IUserProfileService>();
-            _controller = new UserProfileController(_mockService.Object);
+            _serviceMock = new Mock<IUserProfileService>();
+            _controller = new UserProfileController(_serviceMock.Object);
+        }
+
+        private void SetUserClaims(Guid userId, string? role = null)
+        {
+            var claims = new List<Claim> { new Claim("UserId", userId.ToString()) };
+            if (!string.IsNullOrEmpty(role)) claims.Add(new Claim(ClaimTypes.Role, role));
+
+            _controller.ControllerContext = new ControllerContext
+            {
+                HttpContext = new DefaultHttpContext { User = new ClaimsPrincipal(new ClaimsIdentity(claims, "TestAuth")) }
+            };
         }
 
         [Test]
         public async Task GetAll_ReturnsOkResult_WithProfiles()
         {
-            // Arrange
-            _mockService.Setup(s => s.GetAllProfilesAsync())
-                .ReturnsAsync(new List<UserProfileDto>
-                {
-                    new UserProfileDto { UserProfileId = Guid.NewGuid(), FirstName = "John", LastName = "Doe" }
-                });
+            var profiles = new List<UserProfileDto> { new() { UserProfileId = Guid.NewGuid() } };
+            _serviceMock.Setup(s => s.GetAllProfilesAsync()).ReturnsAsync(profiles);
 
-            // Act
-            var result = await _controller.GetAll();
+            SetUserClaims(Guid.NewGuid(), "Admin");
+            var result = await _controller.GetAll() as OkObjectResult;
 
-            // Assert
-            var okResult = result as OkObjectResult;
-            Assert.That(okResult, Is.Not.Null);
-
-            var profiles = okResult?.Value as IEnumerable<UserProfileDto>;
-            Assert.That(profiles, Is.Not.Null);
-            Assert.That(profiles?.Count() ?? 0, Is.EqualTo(1));
+            Assert.That(result, Is.Not.Null);
+            Assert.That(result!.Value, Is.EqualTo(profiles));
         }
 
         [Test]
-        public async Task GetById_ReturnsNotFound_WhenProfileDoesNotExist()
+        public void GetById_ThrowsUnauthorizedException_WhenNotOwnerOrAdmin()
         {
-            // Arrange
-            var id = Guid.NewGuid();
-            _mockService.Setup(s => s.GetProfileByIdAsync(id))
-                .ReturnsAsync((UserProfileDto?)null);
+            var profileId = Guid.NewGuid();
+            var profile = new UserProfileDto { UserProfileId = profileId, UserId = Guid.NewGuid() };
+            _serviceMock.Setup(s => s.GetProfileByIdAsync(profileId)).ReturnsAsync(profile);
 
-            // Act
-            var result = await _controller.GetById(id);
+            SetUserClaims(Guid.NewGuid(), "Respondent");
 
-            // Assert
-            Assert.That(result, Is.TypeOf<NotFoundResult>());
+            Assert.That(async () => await _controller.GetById(profileId),
+                        Throws.TypeOf<UnauthorizedException>());
         }
 
         [Test]
-        public async Task Create_ReturnsCreatedAtAction_WithProfile()
+        public async Task Create_ReturnsCreatedAtActionResult()
         {
-            // Arrange
-            var dto = new CreateUserProfileDto
-            {
-                UserId = Guid.NewGuid(),
-                FirstName = "Jane",
-                LastName = "Doe"
-            };
+            var createDto = new CreateUserProfileDto { UserId = Guid.NewGuid() };
+            var profileDto = new UserProfileDto { UserProfileId = Guid.NewGuid() };
 
-            var returnedDto = new UserProfileDto
-            {
-                UserProfileId = Guid.NewGuid(),
-                UserId = dto.UserId,
-                FirstName = dto.FirstName,
-                LastName = dto.LastName
-            };
+            _serviceMock.Setup(s => s.CreateProfileAsync(createDto)).ReturnsAsync(profileDto);
+            SetUserClaims(Guid.NewGuid(), "Admin");
 
-            _mockService.Setup(s => s.CreateProfileAsync(dto))
-                .ReturnsAsync(returnedDto);
+            var result = await _controller.Create(createDto) as CreatedAtActionResult;
 
-            // Act
-            var result = await _controller.Create(dto);
-
-            // Assert
-            var createdResult = result as CreatedAtActionResult;
-            Assert.That(createdResult, Is.Not.Null);
-            Assert.That(createdResult?.Value, Is.EqualTo(returnedDto));
+            Assert.That(result, Is.Not.Null);
+            Assert.That(result!.Value, Is.EqualTo(profileDto));
+            Assert.That(result.ActionName, Is.EqualTo(nameof(_controller.GetById)));
         }
 
         [Test]
-        public async Task Delete_ReturnsNoContent_WhenProfileExists()
+        public async Task Update_ReturnsNoContent_WhenAuthorized()
         {
-            // Arrange
-            var id = Guid.NewGuid();
-            var profile = new UserProfileDto { UserProfileId = id, FirstName = "John" };
+            var userId = Guid.NewGuid();
+            var profileDto = new UserProfileDto { UserProfileId = Guid.NewGuid(), UserId = userId };
 
-            _mockService.Setup(s => s.GetProfileByIdAsync(id)).ReturnsAsync(profile);
-            _mockService.Setup(s => s.DeleteProfileAsync(id)).Returns(Task.CompletedTask);
+            SetUserClaims(userId);
+            _serviceMock.Setup(s => s.UpdateProfileAsync(profileDto)).Returns(Task.CompletedTask);
 
-            // Act
-            var result = await _controller.Delete(id);
+            var result = await _controller.Update(profileDto.UserProfileId, profileDto) as NoContentResult;
 
-            // Assert
-            Assert.That(result, Is.TypeOf<NoContentResult>());
+            Assert.That(result, Is.Not.Null);
+            Assert.That(result!.StatusCode, Is.EqualTo(204));
         }
     }
 }

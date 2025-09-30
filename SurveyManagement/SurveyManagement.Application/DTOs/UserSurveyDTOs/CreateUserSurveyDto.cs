@@ -1,9 +1,5 @@
-﻿namespace SurveyManagement.Application.DTOs.UserSurveyDTOs
+﻿public class CreateUserSurveyDto
 {
-    public class CreateUserSurveyDto
-    {
-        public Guid UserId { get; set; }
-        public Guid SurveyId { get; set; }
-        public Guid CreatedById { get; set; } // Added
-    }
+    public Guid SurveyId { get; set; }
+    public string Title { get; set; } = string.Empty; // example
 }
