@@ -2,6 +2,7 @@
 using SurveyManagement.Application.DTOs.UserProfileDTOs;
 using SurveyManagement.Domain.Entities;
 using SurveyManagement.Domain.Interfaces;
+using SurveyManagement.Domain.Exceptions;
 
 namespace SurveyManagement.Application.Services
 {
@@ -22,20 +23,27 @@ namespace SurveyManagement.Application.Services
             return _mapper.Map<IEnumerable<UserProfileDto>>(profiles);
         }
 
-        public async Task<UserProfileDto?> GetProfileByIdAsync(Guid profileId)
+        public async Task<UserProfileDto> GetProfileByIdAsync(Guid profileId)
         {
-            var profile = await _repository.GetByIdAsync(profileId);
-            return _mapper.Map<UserProfileDto?>(profile);
+            var profile = await _repository.GetByIdAsync(profileId)
+                ?? throw new NotFoundException("UserProfile", profileId);
+
+            return _mapper.Map<UserProfileDto>(profile);
         }
 
-        public async Task<UserProfileDto?> GetProfileByUserIdAsync(Guid userId)
+        public async Task<UserProfileDto> GetProfileByUserIdAsync(Guid userId)
         {
-            var profile = await _repository.GetByUserIdAsync(userId);
-            return _mapper.Map<UserProfileDto?>(profile);
+            var profile = await _repository.GetByUserIdAsync(userId)
+                ?? throw new NotFoundException("UserProfile", userId);
+
+            return _mapper.Map<UserProfileDto>(profile);
         }
 
         public async Task<UserProfileDto> CreateProfileAsync(CreateUserProfileDto createProfileDto)
         {
+            if (createProfileDto == null)
+                throw new BadRequestException("CreateUserProfileDto cannot be null");
+
             var profile = _mapper.Map<UserProfile>(createProfileDto);
             await _repository.AddAsync(profile);
             return _mapper.Map<UserProfileDto>(profile);
@@ -43,8 +51,8 @@ namespace SurveyManagement.Application.Services
 
         public async Task UpdateProfileAsync(UserProfileDto profileDto)
         {
-            var profile = await _repository.GetByIdAsync(profileDto.UserProfileId);
-            if (profile == null) return;
+            var profile = await _repository.GetByIdAsync(profileDto.UserProfileId)
+                ?? throw new NotFoundException("UserProfile", profileDto.UserProfileId);
 
             profile.FirstName = profileDto.FirstName;
             profile.LastName = profileDto.LastName;
@@ -56,6 +64,9 @@ namespace SurveyManagement.Application.Services
 
         public async Task DeleteProfileAsync(Guid profileId)
         {
+            var profile = await _repository.GetByIdAsync(profileId)
+                ?? throw new NotFoundException("UserProfile", profileId);
+
             await _repository.DeleteAsync(profileId);
         }
     }

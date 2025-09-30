@@ -1,6 +1,7 @@
 ﻿using AutoMapper;
 using SurveyManagement.Application.DTOs.UserSurveyDTOs;
 using SurveyManagement.Domain.Entities;
+using SurveyManagement.Domain.Exceptions;
 using SurveyManagement.Domain.Interfaces;
 
 namespace SurveyManagement.Application.Services
@@ -31,15 +32,17 @@ namespace SurveyManagement.Application.Services
         public async Task<UserSurveyDto?> GetUserSurveyByIdAsync(Guid id)
         {
             var survey = await _repository.GetByIdAsync(id);
-            return _mapper.Map<UserSurveyDto?>(survey);
+            if (survey == null)
+                return null;
+
+            return _mapper.Map<UserSurveyDto>(survey);
         }
 
         public async Task<UserSurveyDto> CreateUserSurveyAsync(CreateUserSurveyDto dto, Guid createdById)
         {
             var entity = _mapper.Map<UserSurvey>(dto);
             entity.UserSurveyId = Guid.NewGuid();
-            entity.StartedAt = DateTime.UtcNow;
-            entity.CreatedById = createdById; // Track the admin who created it
+            entity.CreatedById = createdById;
 
             await _repository.AddAsync(entity);
             return _mapper.Map<UserSurveyDto>(entity);
@@ -47,12 +50,20 @@ namespace SurveyManagement.Application.Services
 
         public async Task UpdateUserSurveyAsync(UserSurveyDto dto)
         {
-            var entity = _mapper.Map<UserSurvey>(dto);
-            await _repository.UpdateAsync(entity);
+            var existingEntity = await _repository.GetByIdAsync(dto.UserSurveyId);
+            if (existingEntity == null)
+                throw new NotFoundException("UserSurvey", dto.UserSurveyId);
+
+            _mapper.Map(dto, existingEntity); // Map only updated fields
+            await _repository.UpdateAsync(existingEntity);
         }
 
         public async Task DeleteUserSurveyAsync(Guid id)
         {
+            var existingEntity = await _repository.GetByIdAsync(id);
+            if (existingEntity == null)
+                throw new NotFoundException("UserSurvey", id);
+
             await _repository.DeleteAsync(id);
         }
     }

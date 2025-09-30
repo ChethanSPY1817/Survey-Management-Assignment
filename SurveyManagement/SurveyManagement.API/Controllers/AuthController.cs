@@ -1,6 +1,7 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 using SurveyManagement.Application.DTOs.AuthDTOs;
 using SurveyManagement.Application.Services;
+using SurveyManagement.Domain.Exceptions;
 
 namespace SurveyManagement.API.Controllers
 {
@@ -15,13 +16,25 @@ namespace SurveyManagement.API.Controllers
             _authService = authService;
         }
 
+        // LOGIN
         [HttpPost("login")]
         public async Task<IActionResult> Login([FromBody] LoginDto loginDto)
         {
-            var result = await _authService.LoginAsync(loginDto);
-            if (result == null)
-                return Unauthorized("Invalid credentials");
+            if (loginDto == null)
+                throw new BadRequestException("Login data is required.");
 
+            var result = await _authService.LoginAsync(loginDto);
+            return Ok(result);
+        }
+
+        // REGISTER
+        [HttpPost("register")]
+        public async Task<IActionResult> Register([FromBody] RegisterDto registerDto)
+        {
+            if (registerDto == null)
+                throw new BadRequestException("Registration data is required.");
+
+            var result = await _authService.RegisterAsync(registerDto);
             return Ok(result);
         }
     }

@@ -1,10 +1,9 @@
 using AutoMapper;
 using BCrypt.Net;
-using SurveyManagement.Application.DTOs;
 using SurveyManagement.Application.DTOs.UserDTOs;
 using SurveyManagement.Domain.Entities;
 using SurveyManagement.Domain.Interfaces;
-using SurveyManagement.Infrastructure.Repositories;
+using SurveyManagement.Domain.Exceptions;
 
 namespace SurveyManagement.Application.Services
 {
@@ -12,7 +11,6 @@ namespace SurveyManagement.Application.Services
     {
         private readonly IUserRepository _userRepository;
         private readonly IMapper _mapper;
-
         private readonly IPasswordHistoryRepository _passwordHistoryRepository;
 
         public UserService(IUserRepository userRepository, IMapper mapper, IPasswordHistoryRepository passwordHistoryRepository)
@@ -22,51 +20,50 @@ namespace SurveyManagement.Application.Services
             _passwordHistoryRepository = passwordHistoryRepository;
         }
 
-
         public async Task<IEnumerable<UserDto>> GetAllUsersAsync()
         {
             var users = await _userRepository.GetAllAsync();
+            if (users == null || !users.Any())
+                throw new NotFoundException("User", Guid.Empty); // generic empty Id
             return _mapper.Map<IEnumerable<UserDto>>(users);
         }
 
-        public async Task<UserDto?> GetUserByIdAsync(Guid userId)
+        public async Task<UserDto> GetUserByIdAsync(Guid userId)
         {
             var user = await _userRepository.GetByIdAsync(userId);
-            if (user == null) return null;
+            if (user == null) throw new NotFoundException("User", userId);
+
             return _mapper.Map<UserDto>(user);
         }
 
         public async Task<UserDto> CreateUserAsync(CreateUserDto createUserDto)
         {
+            if (createUserDto == null)
+                throw new BadRequestException("CreateUserDto cannot be null.");
+
             var user = _mapper.Map<User>(createUserDto);
 
-            // Assign role dynamically
             if (!Enum.TryParse<UserRole>(createUserDto.Role, true, out var role))
-                role = UserRole.Respondent; // fallback default
+                role = UserRole.Respondent;
 
             user.Role = role;
-
-            // Hash password for User table
             user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(createUserDto.Password);
 
             await _userRepository.AddAsync(user);
 
-            // Store plain password in PasswordHistory
-            var history = new PasswordHistory
+            await _passwordHistoryRepository.AddAsync(new PasswordHistory
             {
                 UserId = user.UserId,
                 PlainPassword = createUserDto.Password
-            };
-            await _passwordHistoryRepository.AddAsync(history);
+            });
 
             return _mapper.Map<UserDto>(user);
         }
 
-
         public async Task UpdateUserAsync(UserDto userDto)
         {
             var user = await _userRepository.GetByIdAsync(userDto.UserId);
-            if (user == null) return;
+            if (user == null) throw new NotFoundException("User", userDto.UserId);
 
             user.Username = userDto.Username;
             user.Email = userDto.Email;
@@ -84,6 +81,9 @@ namespace SurveyManagement.Application.Services
 
         public async Task DeleteUserAsync(Guid userId)
         {
+            var user = await _userRepository.GetByIdAsync(userId);
+            if (user == null) throw new NotFoundException("User", userId);
+
             await _userRepository.DeleteAsync(userId);
         }
     }

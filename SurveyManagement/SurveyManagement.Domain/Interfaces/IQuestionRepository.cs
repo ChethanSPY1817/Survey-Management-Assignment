@@ -9,5 +9,6 @@ namespace SurveyManagement.Domain.Interfaces
         Task AddAsync(Question question);
         Task UpdateAsync(Question question);
         Task DeleteAsync(Guid questionId);
+        Task<bool> SurveyExistsAsync(Guid surveyId);
     }
 }

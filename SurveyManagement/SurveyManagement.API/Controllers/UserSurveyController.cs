@@ -2,6 +2,7 @@
 using Microsoft.AspNetCore.Mvc;
 using SurveyManagement.Application.DTOs.UserSurveyDTOs;
 using SurveyManagement.Application.Services;
+using SurveyManagement.Domain.Exceptions;
 using System.Security.Claims;
 
 namespace SurveyManagement.API.Controllers
@@ -21,7 +22,11 @@ namespace SurveyManagement.API.Controllers
         // Helper method to get current logged-in user's ID from JWT
         private Guid GetCurrentUserId()
         {
-            return Guid.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier));
+            var userIdClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            if (userIdClaim == null)
+                throw new UnauthorizedException("User not authenticated");
+
+            return Guid.Parse(userIdClaim);
         }
 
         [HttpGet]
@@ -39,7 +44,7 @@ namespace SurveyManagement.API.Controllers
             var survey = await _service.GetUserSurveyByIdAsync(id);
 
             if (survey == null || survey.CreatedById != creatorId)
-                return NotFound();
+                throw new NotFoundException("UserSurvey", id);
 
             return Ok(survey);
         }
@@ -47,7 +52,8 @@ namespace SurveyManagement.API.Controllers
         [HttpPost]
         public async Task<IActionResult> Create([FromBody] CreateUserSurveyDto dto)
         {
-            if (dto == null) return BadRequest();
+            if (dto == null)
+                throw new BadRequestException("Invalid survey data");
 
             var createdById = GetCurrentUserId();
             var createdSurvey = await _service.CreateUserSurveyAsync(dto, createdById);
@@ -58,13 +64,14 @@ namespace SurveyManagement.API.Controllers
         [HttpPut("{id}")]
         public async Task<IActionResult> Update(Guid id, [FromBody] UserSurveyDto dto)
         {
-            if (id != dto.UserSurveyId) return BadRequest("ID mismatch");
+            if (id != dto.UserSurveyId)
+                throw new BadRequestException("ID mismatch");
 
             var creatorId = GetCurrentUserId();
             var existingSurvey = await _service.GetUserSurveyByIdAsync(id);
 
             if (existingSurvey == null || existingSurvey.CreatedById != creatorId)
-                return NotFound();
+                throw new NotFoundException("UserSurvey", id);
 
             await _service.UpdateUserSurveyAsync(dto);
             return NoContent();
@@ -77,7 +84,7 @@ namespace SurveyManagement.API.Controllers
             var existingSurvey = await _service.GetUserSurveyByIdAsync(id);
 
             if (existingSurvey == null || existingSurvey.CreatedById != creatorId)
-                return NotFound();
+                throw new NotFoundException("UserSurvey", id);
 
             await _service.DeleteUserSurveyAsync(id);
             return NoContent();

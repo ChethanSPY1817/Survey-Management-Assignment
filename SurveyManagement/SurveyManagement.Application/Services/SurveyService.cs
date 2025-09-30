@@ -1,6 +1,7 @@
 ﻿using AutoMapper;
 using SurveyManagement.Application.DTOs.SurveyDTOs;
 using SurveyManagement.Domain.Entities;
+using SurveyManagement.Domain.Exceptions;
 using SurveyManagement.Domain.Interfaces;
 using System;
 using System.Collections.Generic;
@@ -26,35 +27,34 @@ namespace SurveyManagement.Application.Services
             return surveys.Select(s => _mapper.Map<SurveyDto>(s));
         }
 
-        public async Task<SurveyDto?> GetByIdAsync(Guid surveyId)
+        public async Task<SurveyDto> GetByIdAsync(Guid surveyId)
         {
             var survey = await _surveyRepository.GetByIdAsync(surveyId);
-            if (survey == null) return null;
+            if (survey == null)
+                throw new NotFoundException("Survey", surveyId);
+
             return _mapper.Map<SurveyDto>(survey);
         }
 
-        // Updated: set CreatedByUserId externally from controller
-        // Service
         public async Task<SurveyDto> CreateAsync(CreateSurveyDto createSurveyDto, Guid currentUserId)
         {
             var survey = _mapper.Map<Survey>(createSurveyDto);
-
-            // Set the creator here
             survey.CreatedByUserId = currentUserId;
             survey.CreatedAt = DateTime.UtcNow;
 
             await _surveyRepository.AddAsync(survey);
-
             return _mapper.Map<SurveyDto>(survey);
         }
 
-
-        public async Task UpdateAsync(SurveyDto surveyDto)
+        public async Task UpdateAsync(SurveyDto surveyDto, Guid currentUserId)
         {
             var existingSurvey = await _surveyRepository.GetByIdAsync(surveyDto.SurveyId);
-            if (existingSurvey == null) throw new Exception("Survey not found");
+            if (existingSurvey == null)
+                throw new NotFoundException("Survey", surveyDto.SurveyId);
 
-            // Map changes from DTO to entity, preserve FK relationships
+            if (existingSurvey.CreatedByUserId != currentUserId)
+                throw new UnauthorizedException("You are not authorized to update this survey.");
+
             existingSurvey.Title = surveyDto.Title;
             existingSurvey.Description = surveyDto.Description;
             existingSurvey.IsActive = surveyDto.IsActive;
@@ -63,8 +63,15 @@ namespace SurveyManagement.Application.Services
             await _surveyRepository.UpdateAsync(existingSurvey);
         }
 
-        public async Task DeleteAsync(Guid surveyId)
+        public async Task DeleteAsync(Guid surveyId, Guid currentUserId)
         {
+            var existingSurvey = await _surveyRepository.GetByIdAsync(surveyId);
+            if (existingSurvey == null)
+                throw new NotFoundException("Survey", surveyId);
+
+            if (existingSurvey.CreatedByUserId != currentUserId)
+                throw new UnauthorizedException("You are not authorized to delete this survey.");
+
             await _surveyRepository.DeleteAsync(surveyId);
         }
     }

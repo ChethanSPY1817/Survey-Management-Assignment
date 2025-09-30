@@ -8,12 +8,16 @@ namespace SurveyManagement.Application.Services
     public interface ISurveyService
     {
         Task<IEnumerable<SurveyDto>> GetAllAsync();
-        Task<SurveyDto?> GetByIdAsync(Guid surveyId);
 
-        // Updated: return the created survey
+        Task<SurveyDto> GetByIdAsync(Guid surveyId);
+        // ✅ No longer nullable, throws NotFoundException if not found
+
         Task<SurveyDto> CreateAsync(CreateSurveyDto createSurveyDto, Guid currentUserId);
 
-        Task UpdateAsync(SurveyDto surveyDto);
-        Task DeleteAsync(Guid surveyId);
+        Task UpdateAsync(SurveyDto surveyDto, Guid currentUserId);
+        // ✅ Throws NotFoundException or UnauthorizedException if not allowed
+
+        Task DeleteAsync(Guid surveyId, Guid currentUserId);
+        // ✅ Throws NotFoundException or UnauthorizedException if not allowed
     }
 }

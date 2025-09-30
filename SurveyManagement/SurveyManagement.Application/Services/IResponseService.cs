@@ -1,13 +1,10 @@
 ﻿using SurveyManagement.Application.DTOs.ResponseDTOs;
 
-namespace SurveyManagement.Application.Services
+public interface IResponseService
 {
-    public interface IResponseService
-    {
-        Task<IEnumerable<ResponseDto>> GetAllResponsesAsync();
-        Task<ResponseDto?> GetResponseByIdAsync(Guid responseId);
-        Task CreateResponseAsync(CreateResponseDto createDto);
-        Task UpdateResponseAsync(ResponseDto responseDto);
-        Task DeleteResponseAsync(Guid responseId);
-    }
+    Task<IEnumerable<ResponseDto>> GetAllResponsesAsync();
+    Task<ResponseDto> GetResponseByIdAsync(Guid responseId);
+    Task<ResponseDto> CreateResponseAsync(CreateResponseDto createDto); // ✅ return ResponseDto
+    Task<ResponseDto> UpdateResponseAsync(ResponseDto responseDto);       // ✅ return ResponseDto
+    Task DeleteResponseAsync(Guid responseId);
 }

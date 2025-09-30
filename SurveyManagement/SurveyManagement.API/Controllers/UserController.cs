@@ -1,78 +1,57 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using SurveyManagement.Application.Services;
 using SurveyManagement.Application.DTOs.UserDTOs;
+using SurveyManagement.Application.Services;
+using SurveyManagement.Domain.Exceptions;
 
 namespace SurveyManagement.API.Controllers
 {
     [ApiController]
     [Route("api/[controller]")]
-    [Authorize] // All endpoints require authentication
+    [Authorize]
     public class UserController : ControllerBase
     {
         private readonly IUserService _userService;
 
-        public UserController(IUserService userService)
-        {
-            _userService = userService;
-        }
+        public UserController(IUserService userService) => _userService = userService;
 
-        // GET: api/User
         [HttpGet]
-        [Authorize(Roles = "Admin")] // Only Admin can view all users
-        public async Task<IActionResult> GetAll()
-        {
-            var users = await _userService.GetAllUsersAsync();
-            return Ok(users);
-        }
+        [Authorize(Roles = "Admin")]
+        public async Task<IActionResult> GetAll() => Ok(await _userService.GetAllUsersAsync());
 
-        // GET: api/User/{id}
         [HttpGet("{id}")]
         public async Task<IActionResult> GetById(Guid id)
         {
             var user = await _userService.GetUserByIdAsync(id);
-            if (user == null) return NotFound();
 
-            // Optional: Allow users to only access their own info
             var currentUserId = Guid.Parse(User.FindFirst("UserId")?.Value ?? Guid.Empty.ToString());
             if (user.UserId != currentUserId && !User.IsInRole("Admin"))
-                return Forbid();
+                throw new UnauthorizedException("You are not allowed to access this user.");
 
             return Ok(user);
         }
 
-        // POST: api/User
         [HttpPost]
         [Authorize(Roles = "Admin")]
-        public async Task<IActionResult> Create([FromBody] CreateUserDto createUserDto)
+        public async Task<IActionResult> Create([FromBody] CreateUserDto dto)
         {
-            var userDto = await _userService.CreateUserAsync(createUserDto);
+            var userDto = await _userService.CreateUserAsync(dto);
             return CreatedAtAction(nameof(GetById), new { id = userDto.UserId }, userDto);
         }
 
-
-        // PUT: api/User/{id}
         [HttpPut("{id}")]
-        [Authorize(Roles = "Admin")] // Only Admin can update users
-        public async Task<IActionResult> Update(Guid id, [FromBody] UserDto userDto)
+        [Authorize(Roles = "Admin")]
+        public async Task<IActionResult> Update(Guid id, [FromBody] UserDto dto)
         {
-            if (id != userDto.UserId) return BadRequest("User ID mismatch");
-
-            var existingUser = await _userService.GetUserByIdAsync(id);
-            if (existingUser == null) return NotFound();
-
-            await _userService.UpdateUserAsync(userDto);
+            if (id != dto.UserId) throw new BadRequestException("User ID mismatch.");
+            await _userService.UpdateUserAsync(dto);
             return NoContent();
         }
 
-        // DELETE: api/User/{id}
         [HttpDelete("{id}")]
-        [Authorize(Roles = "Admin")] // Only Admin can delete users
+        [Authorize(Roles = "Admin")]
         public async Task<IActionResult> Delete(Guid id)
         {
-            var existingUser = await _userService.GetUserByIdAsync(id);
-            if (existingUser == null) return NotFound();
-
             await _userService.DeleteUserAsync(id);
             return NoContent();
         }
@@ -80,13 +59,9 @@ namespace SurveyManagement.API.Controllers
         [HttpPost("register")]
         public async Task<IActionResult> Register([FromBody] CreateUserDto dto)
         {
-            // Ensure only Respondent role is allowed via public register
             dto.Role = "Respondent";
-
             var user = await _userService.CreateUserAsync(dto);
             return Ok(new { user.UserId, user.Username, user.Email, user.Role });
         }
-
-
     }
 }

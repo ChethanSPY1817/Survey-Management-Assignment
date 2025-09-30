@@ -2,6 +2,8 @@
 using Microsoft.AspNetCore.Mvc;
 using SurveyManagement.Application.DTOs.SurveyDTOs;
 using SurveyManagement.Application.Services;
+using SurveyManagement.Domain.Exceptions;
+using System.Security.Claims;
 
 namespace SurveyManagement.API.Controllers
 {
@@ -17,43 +19,26 @@ namespace SurveyManagement.API.Controllers
             _surveyService = surveyService;
         }
 
-        // GET: api/Survey
         [HttpGet]
-        public async Task<IActionResult> GetAll()
-        {
-            var surveys = await _surveyService.GetAllAsync();
-            return Ok(surveys);
-        }
+        public async Task<IActionResult> GetAll() => Ok(await _surveyService.GetAllAsync());
 
-        // GET: api/Survey/{id}
         [HttpGet("{id}")]
         public async Task<IActionResult> GetById(Guid id)
         {
             var survey = await _surveyService.GetByIdAsync(id);
-            if (survey == null) return NotFound();
-
             return Ok(survey);
         }
 
-        // POST: api/Survey
-        // Controller
         [HttpPost]
-        [Authorize(Roles = "Admin")] // Only Admin can create surveys
+        [Authorize(Roles = "Admin")]
         public async Task<IActionResult> Create([FromBody] CreateSurveyDto dto)
         {
-            if (dto == null) return BadRequest("Survey data is required.");
+            var currentUserId = Guid.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)
+                                  ?? throw new UnauthorizedException("User not authenticated"));
 
-            // Get current logged-in Admin's ID from JWT
-            var userIdClaim = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
-            if (string.IsNullOrEmpty(userIdClaim)) return Unauthorized();
-
-            var currentUserId = Guid.Parse(userIdClaim);
-
-            // Pass the creator's ID to the service layer
             var createdSurvey = await _surveyService.CreateAsync(dto, currentUserId);
 
-            // Return only the DTO without exposing CreatedByUserId in Swagger
-            var response = new
+            return Ok(new
             {
                 createdSurvey.SurveyId,
                 createdSurvey.Title,
@@ -61,44 +46,31 @@ namespace SurveyManagement.API.Controllers
                 createdSurvey.ProductId,
                 createdSurvey.IsActive,
                 createdSurvey.CreatedAt
-            };
-
-            return Ok(response);
+            });
         }
 
-
-
-        // PUT: api/Survey/{id}
         [HttpPut("{id}")]
         [Authorize(Roles = "Admin")]
         public async Task<IActionResult> Update(Guid id, [FromBody] SurveyDto dto)
         {
-            if (id != dto.SurveyId) return BadRequest("ID mismatch");
+            if (id != dto.SurveyId)
+                throw new BadRequestException("ID mismatch");
 
-            var existingSurvey = await _surveyService.GetByIdAsync(id);
-            if (existingSurvey == null) return NotFound();
+            var currentUserId = Guid.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)
+                                  ?? throw new UnauthorizedException("User not authenticated"));
 
-            var currentUserId = Guid.Parse(User.FindFirst("UserId")?.Value ?? Guid.Empty.ToString());
-            if (existingSurvey.CreatedByUserId != currentUserId)
-                return Forbid();
-
-            await _surveyService.UpdateAsync(dto);
+            await _surveyService.UpdateAsync(dto, currentUserId);
             return NoContent();
         }
 
-        // DELETE: api/Survey/{id}
         [HttpDelete("{id}")]
         [Authorize(Roles = "Admin")]
         public async Task<IActionResult> Delete(Guid id)
         {
-            var existingSurvey = await _surveyService.GetByIdAsync(id);
-            if (existingSurvey == null) return NotFound();
+            var currentUserId = Guid.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)
+                                  ?? throw new UnauthorizedException("User not authenticated"));
 
-            var currentUserId = Guid.Parse(User.FindFirst("UserId")?.Value ?? Guid.Empty.ToString());
-            if (existingSurvey.CreatedByUserId != currentUserId)
-                return Forbid();
-
-            await _surveyService.DeleteAsync(id);
+            await _surveyService.DeleteAsync(id, currentUserId);
             return NoContent();
         }
     }

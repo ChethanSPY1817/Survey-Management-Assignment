@@ -50,5 +50,10 @@ namespace SurveyManagement.Infrastructure.Repositories
                 await _context.SaveChangesAsync();
             }
         }
+        public async Task<bool> SurveyExistsAsync(Guid surveyId)
+        {
+            return await _context.Surveys.AnyAsync(s => s.SurveyId == surveyId);
+        }
+
     }
 }

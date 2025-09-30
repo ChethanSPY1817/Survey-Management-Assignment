@@ -2,12 +2,14 @@
 using Microsoft.AspNetCore.Mvc;
 using SurveyManagement.Application.DTOs.ResponseDTOs;
 using SurveyManagement.Application.Services;
+using SurveyManagement.Domain.Exceptions;
+using System.Security.Claims;
 
 namespace SurveyManagement.API.Controllers
 {
     [ApiController]
     [Route("api/[controller]")]
-    [Authorize] // All endpoints require authentication
+    [Authorize]
     public class ResponseController : ControllerBase
     {
         private readonly IResponseService _responseService;
@@ -19,7 +21,7 @@ namespace SurveyManagement.API.Controllers
 
         // GET: api/Response
         [HttpGet]
-        [Authorize(Roles = "Admin")] // Only Admin can view all responses
+        [Authorize(Roles = "Admin")]
         public async Task<IActionResult> GetAll()
         {
             var responses = await _responseService.GetAllResponsesAsync();
@@ -28,50 +30,46 @@ namespace SurveyManagement.API.Controllers
 
         // GET: api/Response/{id}
         [HttpGet("{id}")]
-        [Authorize(Roles = "Admin")] // Only Admin can view a specific response
+        [Authorize(Roles = "Admin")]
         public async Task<IActionResult> GetById(Guid id)
         {
             var response = await _responseService.GetResponseByIdAsync(id);
-            if (response == null) return NotFound();
             return Ok(response);
         }
 
         // POST: api/Response
         [HttpPost]
-        [Authorize(Roles = "Respondent")] // Only Respondent can submit
+        [Authorize(Roles = "Respondent")]
         public async Task<IActionResult> Create([FromBody] CreateResponseDto createDto)
         {
-            if (createDto == null) return BadRequest();
+            if (createDto == null)
+                throw new BadRequestException("Response data is required.");
 
             // Optionally attach UserId from JWT claims
-            // createDto.UserId = User.GetUserId();
+            var userId = Guid.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)
+                         ?? throw new UnauthorizedException("User not authenticated"));
 
-            await _responseService.CreateResponseAsync(createDto);
-            return Ok(createDto);
+            var createdResponse = await _responseService.CreateResponseAsync(createDto);
+            return Ok(createdResponse);
         }
 
         // PUT: api/Response/{id}
         [HttpPut("{id}")]
-        [Authorize(Roles = "Admin")] // Only Admin can update if needed
+        [Authorize(Roles = "Admin")]
         public async Task<IActionResult> Update(Guid id, [FromBody] ResponseDto responseDto)
         {
-            if (id != responseDto.ResponseId) return BadRequest("Response ID mismatch");
+            if (id != responseDto.ResponseId)
+                throw new BadRequestException("Response ID mismatch.");
 
-            var existingResponse = await _responseService.GetResponseByIdAsync(id);
-            if (existingResponse == null) return NotFound();
-
-            await _responseService.UpdateResponseAsync(responseDto);
-            return NoContent();
+            var updatedResponse = await _responseService.UpdateResponseAsync(responseDto);
+            return Ok(updatedResponse);
         }
 
         // DELETE: api/Response/{id}
         [HttpDelete("{id}")]
-        [Authorize(Roles = "Admin")] // Only Admin can delete
+        [Authorize(Roles = "Admin")]
         public async Task<IActionResult> Delete(Guid id)
         {
-            var existingResponse = await _responseService.GetResponseByIdAsync(id);
-            if (existingResponse == null) return NotFound();
-
             await _responseService.DeleteResponseAsync(id);
             return NoContent();
         }
